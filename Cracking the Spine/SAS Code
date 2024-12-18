@@ -1,0 +1,364 @@
+libname mylib "P:\ ";
+filename bigrec "P:\FA15_Data.txt " lrecl = 65576;
+data mytemp;
+infile bigrec;
+input
+myid 1-7
+hardcover 23236 /* target */
+stay_at_home_alot 4614 /* prefer to spend a quiet evening at home */
+stay_at_home_alit 4691
+stay_at_home_nada 4845
+stay_at_home_dlit 4922
+stay_at_home_dlot 4999
+effort_recycle_alot 4189 /* I make a conscious effort to recycle */
+effort_recycle_alit 4203
+effort_recycle_nada 4231
+effort_recycle_dlit 4245
+effort_recycle_dlot 4259
+computer_fun_alot 6955 /* my computer is a primary source of fun */
+computer_fun_alit 6972
+computer_fun_nada 7006
+computer_fun_dlit 7023
+computer_fun_dlot 7040
+internet_entertainment_alot 5497 /*internet prime source my entertainment */
+internet_entertainment_alit 5535
+internet_entertainment_nada 5611
+internet_entertainment_dlit 5649
+internet_entertainment_dlot 5687
+internet_change_shop_alot 5495 /* internet change how I shop for products */
+internet_change_shop_alit 5533
+internet_change_shop_nada 5609
+internet_change_shop_dlit 5647
+internet_change_shop_dlot 5685
+online_than_store_alot 5518 /* more likely to buy online than in store */
+online_than_store_alit 5556
+online_than_store_nada 5632
+online_than_store_dlit 5670
+online_than_store_dlot 5708
+online_deal_alot 5521 /* if want in store look online4 better deal */
+online_deal_alit 5559
+online_deal_nada 5635
+online_deal_dlit 5673
+online_deal_dlot 5711
+more_online_alot 5523 /* doing more shopping/internet than before */
+more_online_alit 5561
+more_online_nada 5637
+more_online_dlit 5675
+more_online_dlot 5713
+envi_company_alot 4181 /* more likely prch/environmentally friendly comp */
+envi_company_alit 4195
+envi_company_nada 4223
+envi_company_dlit 4237
+envi_company_dlot 4251
+stop_catalogs_alot 4188 /* tell companies stop sending me catalogs */
+stop_catalogs_alit 4202
+stop_catalogs_nada 4230
+stop_catalogs_dlit 4244
+stop_catalogs_dlot 4258
+recycle_packaging_alot 4190 /* packaging for products should be recycled */
+recycle_packaging_alit 4204
+recycle_packaging_nada 4232
+recycle_packaging_dlit 4246
+recycle_packaging_dlot 4260
+envi_responsible_alot 4184 /* personal obligation/environmentally responsible */
+envi_responsible_alit 4198
+envi_responsible_nada 4226
+envi_responsible_dlit 4240
+envi_responsible_dlot 4254
+kindle 23247 /* descriptor #1 */
+male 2383 /* descriptor #2 */
+female 2384
+no_school 2425 /* descriptor #3 */
+hs_8_or_less 2426
+hs_9_to_10 2427
+hs_grad 2428
+college_less_1 2429
+college_1 2430
+college_2 2431
+college_3_or_more 2432
+college_grad 2433
+grad_school_degree 2434
+grad_school_no_degree 2435
+no_hs_grad 2436
+hs_grad_less_1_college 2437
+college_less_1_3 2438
+college_1_3 2439
+college_grad_more 2440
+employed_30 2462 /* descriptor #4 */
+employed_less_30 2463
+employed_full_or_part 2464
+not_employed 2465
+retired 2466
+temp_unemployed 2467
+disabled 2468
+student 2469
+homemaker 2470
+never_worked 2471
+readers_digest 21252 /* descriptor #5 */
+abc_family 9599 /* descriptor #6 */
+run;
+
+proc format;
+value myscale
+1 = "disagree a lot"
+2 = "disagree a little"
+3 = "neither agree nor disagree"
+4 = "agree a little"
+5 = "agree a lot";
+value yesno
+0 = "no"
+1 = "yes";
+run;
+
+data myvars;
+set mytemp;
+if stay_at_home_dlot = 1 then stay_at_home=1;
+if stay_at_home_dlit = 1 then stay_at_home= 2;
+if stay_at_home_nada = 1 then stay_at_home = 3;
+if stay_at_home_alit = 1 then stay_at_home= 4;
+if stay_at_home_alot = 1 then stay_at_home= 5;
+
+if effort_recycle_dlot = 1 then effort_recycle = 1;
+if effort_recycle_dlit =1 then effort_recycle = 2;
+if effort_recycle_nada =1 then effort_recycle = 3;
+if effort_recycle_alit =1 then effort_recycle = 4;
+if effort_recycle_alot =1 then effort_recycle = 5;
+
+if computer_fun_dlot = 1 then computer_fun = 1;
+if computer_fun_dlit =1 then computer_fun = 2;
+if computer_fun_nada =1 then computer_fun = 3;
+if computer_fun_alit =1 then computer_fun = 4;
+if computer_fun_alot =1 then computer_fun = 5;
+
+if internet_entertainment_dlot = 1 then internet_entertainment = 1;
+if internet_entertainment_dlit =1 then internet_entertainment = 2;
+if internet_entertainment_nada =1 then internet_entertainment = 3;
+if internet_entertainment_alit =1 then internet_entertainment = 4;
+if internet_entertainment_alot =1 then internet_entertainment = 5;
+
+if internet_change_shop_dlot = 1 then internet_change_shop = 1;
+if internet_change_shop_dlit =1 then internet_change_shop = 2;
+if internet_change_shop_nada =1 then internet_change_shop = 3;
+if internet_change_shop_alit =1 then internet_change_shop = 4;
+if internet_change_shop_alot =1 then internet_change_shop = 5;
+
+if online_than_store_dlot = 1 then online_than_store = 1;
+if online_than_store_dlit =1 then online_than_store = 2;
+if online_than_store_nada =1 then online_than_store = 3;
+if online_than_store_alit =1 then online_than_store = 4;
+if online_than_store_alot =1 then online_than_store = 5;
+
+if online_deal_dlot = 1 then online_deal = 1;
+if online_deal_dlit =1 then online_deal = 2;
+if online_deal_nada =1 then online_deal = 3;
+if online_deal_alit =1 then online_deal = 4;
+if online_deal_alot =1 then online_deal = 5;
+
+if more_online_dlot = 1 then more_online = 1;
+if more_online_dlit =1 then more_online = 2;
+if more_online_nada =1 then more_online = 3;
+if more_online_alit =1 then more_online = 4;
+if more_online_alot =1 then more_online = 5;
+
+if envi_company_dlot = 1 then envi_company = 1;
+if envi_company_dlit =1 then envi_company = 2;
+if envi_company_nada =1 then envi_company = 3;
+if envi_company_alit =1 then envi_company = 4;
+if envi_company_alot =1 then envi_company = 5;
+
+if stop_catalogs_dlot = 1 then stop_catalogs = 1;
+if stop_catalogs_dlit =1 then stop_catalogs = 2;
+if stop_catalogs_nada =1 then stop_catalogs = 3;
+if stop_catalogs_alit =1 then stop_catalogs = 4;
+if stop_catalogs_alot =1 then stop_catalogs = 5;
+
+if recycle_packaging_dlot = 1 then recycle_packaging = 1;
+if recycle_packaging_dlit =1 then recycle_packaging = 2;
+if recycle_packaging_nada =1 then recycle_packaging = 3;
+if recycle_packaging_alit =1 then recycle_packaging = 4;
+if recycle_packaging_alot =1 then recycle_packaging = 5;
+
+if envi_responsible_dlot = 1 then envi_responsible = 1;
+if envi_responsible_dlit =1 then envi_responsible = 2;
+if envi_responsible_nada =1 then envi_responsible = 3;
+if envi_responsible_alit =1 then envi_responsible = 4;
+if envi_responsible_alot =1 then envi_responsible = 5;
+
+/* now set up binary yes – no variables knowing that missing values get a zero and a 1 gets a 1 */
+if hardcover = . then hardcover = 0;
+if hardcover = 1 then hardcover = 1;
+
+if kindle = . then kindle = 0;
+if kindle = 1 then kindle = 1;
+
+if male = . then male = 0;
+if male = 1 then male = 1;
+
+if female = . then female = 0;
+if female = 1 then gender = 1;
+
+if no_school = . then did_not_graduate_college = 0;
+if no_school = 1 then did_not_graduate_college = 1;
+
+if hs_8_or_less if hs_8_or_less = . then did_not_graduate_college = 0;
+= 1 then did_not_graduate_college = 1;
+
+if hs_9_to_10 = . then did_not_graduate_college = 0;
+if hs_9_to_10 = 1 then did_not_graduate_college = 1;
+
+if hs_grad = . then did_not_graduate_college = 0;
+if hs_grad = 1 then did_not_graduate_college = 1;
+
+if college_less_1 = . then did_not_graduate_college = 0;
+if college_less_1 = 1 then did_not_graduate_college = 1;
+
+if college_1 = . then did_not_graduate_college = 0;
+if college_1 = 1 then did_not_graduate_college = 1;
+
+if college_2 = . then did_not_graduate_college = 0;
+if college_2 = 1 then did_not_graduate_college = 1;
+
+if college_3_or_more = . then did_not_graduate_college = 0;
+if college_3_or_more = 1 then did_not_graduate_college = 1;
+
+if college_grad = . then graduated_college = 0;
+if college_grad = 1 then graduated_college = 1;
+
+if grad_school_degree = . then graduated_college = 0;
+if grad_school_degree = 1 then graduated_college = 1;
+
+if grad_school_no_degree = . then graduated_college = 0;
+if grad_school_no_degree = 1 then graduated_college = 1;
+
+if no_hs_grad = . then did_not_graduate_college = 0;
+if no_hs_grad = 1 then did_not_graduate_college = 1;
+
+if hs_grad_less_1_college = . then did_not_graduate_college = 0;
+if hs_grad_less_1_college = 1 then did_not_graduate_college = 1;
+
+if college_less_1_3 = . then did_not_graduate_college = 0;
+if college_less_1_3 = 1 then did_not_graduate_college = 1;
+
+if college_1_3 = . then did_not_graduate_college = 0;
+if college_1_3 = 1 then did_not_graduate_college = 1;
+
+if college_grad_more = . then graduated_college = 0;
+if college_grad_more = 1 then graduated_college = 1;
+
+if employed_30 = . then employed = 0;
+if employed_30 = 1 then employed = 1;
+
+if employed_less_30 = . then employed = 0;
+if employed_less_30 = 1 then employed = 1;
+
+if employed_full_or_part = . then employed = 0;
+if employed_full_or_part = 1 then employed = 1;
+
+if not_employed = . then unemployed = 0;
+if not_employed = 1 then unemployed = 1;
+
+if retired = . then unemployed = 0;
+if retired = 1 then unemployed = 1;
+
+if temp_unemployed = . then unemployed = 0;
+if temp_unemployed = 1 then unemployed = 1;
+
+if disabled = . then unemployed = 0;
+if disabled = 1 then unemployed = 1;
+
+if student = . then unemployed = 0;
+if student = 1 then unemployed = 1;
+
+if homemaker = . then unemployed = 0;
+if homemaker = 1 then unemployed = 1;
+
+if never_worked = . then unemployed = 0;
+if never_worked = 1 then unemployed = 1;
+
+if readers_digest = . then readers_digest = 0;
+if readers_digest = 1 then readers_digest = 1;
+
+if abc_family = . then abc_family = 0;
+if abc_family = 1 then abc_family = 1;
+
+/* now attach the values for each of the variables using the proc format labels */
+format stay_at_home
+effort_recycle
+computer_fun
+internet_entertainment
+internet_change_shop
+online_than_store
+online_deal
+more_online
+envi_company
+stop_catalogs
+recycle_packaging
+envi_responsible myscale.
+hardcover
+kindle
+male
+female
+did_not_graduate_college
+graduated_college
+employed
+unemployed
+readers_digest
+abc_family
+yesno. ;
+run;
+
+data myfactor;
+set work.myvars;
+/* do the factor analysis - set eigenval rotate=varimax scree PCA */
+proc factor data = myfactor
+maxiter=100
+method=principal
+mineigen=1
+rotate=varimax
+nfactors=8
+msa
+scree
+score
+print
+out=myscores;
+
+var
+internet_change_shop
+online_than_store
+online_deal
+more_online
+envi_company
+stop_catalogs
+recycle_packaging
+envi_responsible;
+run;
+
+data myscores1;
+set myscores;
+rename factor1 = online_shopper;
+rename factor2 = environmentally_cautious;
+run;
+
+data letscluster;
+set work.myscores1;
+proc fastclus data=letscluster maxiter=100 maxclusters=7 out=finalclus;
+var stay_at_home computer_fun internet_entertainment online_shopper environmentally_cautious;
+run;
+
+proc sort data= finalclus out=mysort;
+by cluster;
+run;
+proc means data=mysort;
+by cluster;
+var
+hardcover
+kindle
+male
+female
+did_not_graduate_college
+graduated_college
+employed
+unemployed
+readers_digest
+abc_family;
+run;
