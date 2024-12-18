@@ -1,0 +1,212 @@
+---
+title: "Project Code"
+output: html_notebook
+---
+
+```{r}
+#Library
+library(survminer) 
+library(finalfit)
+library(car)
+library(survival)
+```
+
+```{r}
+## Data import ##
+data <- read.table("project3.txt", header = TRUE, sep = "", 
+                   stringsAsFactors = FALSE)
+data$lenfol_months <- data$lenfol / 30.4375
+
+# Add transformed x terms to the data set #
+xterms <- data.frame(data$age^1.92, log(data$los))
+data <- data.frame(data, xterms)
+data <- rename(data, tranage = data.age.1.92, tranlos = log.data.los.)
+
+# Add age-gender interaction term as well #
+agegen <- data$age * data$gender; agegen
+data <- data.frame(data,agegen); colnames(data)
+```
+
+
+```{r}
+# Initial K-M estimates (from Lecture 11) #
+kmfit <- survfit(Surv(lenfol_months, fstat) ~ 1, data=data); kmfit   # no regression yet, just KM estimate of S(t)
+summary(kmfit, times=c(0,5,10,15,20,30,40,50,60,70,80))   # S(t) estimated at different time points of interest
+
+# Survival plot based on gender
+plot <- surv_plot(data, dependent="Surv(lenfol_months, fstat)", explanatory="gender", pval=T)
+plot$plot <- plot$plot + ggtitle("Survival Plot Differentiated by Gender") +
+                  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+plot
+colnames(data)
+```
+
+```{r}
+# Fit a Cox PH Model using stepwise regression (also from Lecture 11) #
+# forward selection yields the same result
+xset <- colnames(data)[c(7:9, 11:13)]; xset   # variable selection procedures
+fitPH <- coxph(Surv(lenfol_months, fstat) ~ 1, data=data)
+```
+
+```{r stepwise}
+addx <- function(mod, xset, method=c("p.value", "AIC", "BIC"), alpha=0.15) {
+  d <- length(xset); added <- F
+  if (d > 0) {
+    n <- mod$n
+    p <- length(mod$coef)
+    logL0 <- rev(mod$loglik)[1]
+    AIC0 <- logL0 - 2*p
+    BIC0 <- logL0 - p/2*log(n)
+    
+    p.val <- AIC <- BIC <- rep(NA, d)
+    for(i in 1:d) {
+      newf <- as.formula(paste(". ~ . +", xset[i]))
+      mod1 <- update(mod, newf)
+      logL <- rev(mod1$loglik)[1]
+      X2 <- -2*(logL0 - logL)
+      p.val[i] <- 1-pchisq(X2, df=1)
+      AIC[i] <- logL - (p+1)*2
+      BIC[i] <- logL - (p+1)/2*log(n) }
+    
+    i <- NA
+    if ((method=="p.value") && (min(p.val) < alpha)) i <- which.min(p.val)
+    if ((method=="AIC"    ) && (max(AIC  ) > AIC0 )) i <- which.max(AIC  )
+    if ((method=="BIC"    ) && (max(BIC  ) > BIC0 )) i <- which.max(BIC  )
+    if (!is.na(i)) {
+      newf <- as.formula(paste(". ~ . +", xset[i]))
+      mod  <- update(mod, newf)
+      xset <- xset[-i]; added <- T }
+  }
+  list(mod=mod, xset=xset, added=added) }
+
+delx <- function(mod, xset=NULL, method=c("p.value", "AIC", "BIC"), alpha=0.15) {
+   # available only for class(mod)=="coxph" at the moment; need to implement for "survreg", "lm"
+   vset <- names(mod$coef)
+   d <- length(vset); deleted <- F
+   if (d > 0) {
+    n <- mod$n
+    p <- length(mod$coef)
+   logL0 <- rev(mod$loglik)[1]
+    AIC0 <- logL0 - 2*p
+    BIC0 <- logL0 - p/2*log(n)
+
+   p.val <- summary(mod)$coef[, "Pr(>|z|)"]
+   AIC <- BIC <- rep(NA, d)
+   for(i in 1:d) {
+      newf <- as.formula(paste(". ~ . -", vset[i]))
+      mod1 <- update(mod, newf)
+      logL <- rev(mod1$loglik)[1]
+      AIC[i] <- logL - (p-1)*2
+      BIC[i] <- logL - (p-1)/2*log(n) }
+
+   i <- NA
+   if ((method=="p.value") && (max(p.val) > alpha)) i <- which.max(p.val)
+   if ((method=="AIC"    ) && (max(AIC  ) > AIC0 )) i <- which.max(AIC  )
+   if ((method=="BIC"    ) && (max(BIC  ) > BIC0 )) i <- which.max(BIC  )
+   if (!is.na(i)) {
+      newf <- as.formula(paste(". ~ . -", vset[i]))
+      mod  <- update(mod, newf)
+      xset <- c(xset, vset[i]); deleted <- T }
+   }
+   list(mod=mod, xset=xset, deleted=deleted) }
+
+stepwise <- function(mod, xset=NULL, method=c("p.value", "AIC", "BIC"), 
+                     alpha.in=0.15, alpha.out=0.15, max.iter=100) {   # stepwise selection procedure
+  for(i in 1:max.iter) { 
+    fwd  <- addx(mod, xset, method[1], alpha.in)
+    mod  <- fwd$mod
+    xset <- fwd$xset
+    bwd  <- delx(mod, xset, method[1], alpha.out)
+    mod  <- bwd$mod
+    xset <- bwd$xset
+    if ((!fwd$added) && (!bwd$deleted)) break }
+  
+  if (i==max.iter) cat("\nWARNING: Maximum number of iterations has been reached. \n")
+  mod }
+```
+
+```{r}
+# Factor gender column in data
+data$gender_factor <- factor(data$gender)
+
+# Fit a Cox PH Model using stepwise regression (also from Lecture 11) #
+xset <- colnames(data)[c(4,7:9, 13)]; xset   # variable selection procedures
+fitPH <- coxph(Surv(lenfol_months, fstat) ~ 1, data=data)
+
+summary(stepwise(fitPH, xset, alpha.in = .25, alpha.out = .2))
+# Stepwise regression yields age and bmi as the only significant regressors
+# Trying different variables in the model doesnt make a huge change -> defer to more parsimonious model
+otherfit <- summary(coxph(Surv(lenfol_months, fstat) ~ tranage + bmi + tranlos + gender_factor, data=data)) ; otherfit
+```
+
+```{r}
+mod <- Surv(lenfol_months, fstat) ~ age + bmi
+fitPH   <-   coxph(mod, data=data, ties="efron"      ); summary(fitPH  )   # default for ties
+fitPHb  <-   coxph(mod, data=data, ties="breslow"    ); summary(fitPHb ) 
+fitPHe  <-   coxph(mod, data=data, ties="exact"      ); summary(fitPHe ) 
+fitAFTx <- survreg(mod, data=data, dist="exponential"); summary(fitAFTx) 
+fitAFTw <- survreg(mod, data=data, dist="weibull"    ); summary(fitAFTw) 
+# log(scale) not significant for weibull; should use AFT exponential instead
+```
+
+```{r}
+stepwise(fitPH, xset)
+stepwise(fitPHb, xset)
+stepwise(fitPHe, xset)
+```
+
+
+```{r}
+# First run a full model for each distribution (modbas), then observe which appear significant 
+# for most of the models and remove the insignifcant variables
+modbas <- Surv(lenfol_months,fstat) ~ los + age + gender + bmi + tranage + tranlos + agegen
+modbas2 <- Surv(lenfol_months,fstat) ~ age + gender + bmi + agegen
+fitAFTx <- survreg(modbas2, data=data, dist="exponential"); summary(fitAFTx)   
+fitAFTw <- survreg(modbas2, data=data, dist="weibull"    ); summary(fitAFTw) 
+fitAFTn <- survreg(modbas2, data=data, dist="lognormal"  ); summary(fitAFTn)  
+fitAFTl <- survreg(modbas2, data=data, dist="loglogistic"); summary(fitAFTl)
+# Age, gender, bmi, and interaction are significant (or nearly significant at 95% level) for all
+# the models, and log-likelihoods are approximately equal
+# Like before, defer to most parsimonious model, which is the one-parameter exponential
+
+# Compare the final AFT and PH models
+exponentialaft <- fitAFTx; exponentialaft
+PHmodel <- fitPHe; PHmodel
+
+```
+
+
+```{r}
+coef <- data.frame(Efron  =fitPH$coef ,
+                   Breslow=fitPHb$coef,
+                   Exact  =fitPHe$coef,
+                   Exponential=fitAFTx$coef[-1]*(-1),
+                   Weibull=fitAFTw$coef[-1]*(-1)/fitAFTw$scale)
+#rownames(coef) <- covar <- unlist(strsplit(names(fitPH$coef), "1"))
+coef
+```
+
+```{r}
+X <- data[,covar]   # design matrix of covariates
+datp <- apply(X, 2, mean); datp
+fitS <- survfit(fitPH, datp, type="kalbfleisch-prentice"); fitS
+plot(fitS, xlab="Time, t", ylab="Estimated Survival Probability, S(t)", 
+     main="Kalbfleisch-Prentice estimate of survival function\n at the averages of the covariates with 95% confidence bands")
+fitS <- survfit(fitPH, datp, type="breslow"             ); fitS
+plot(fitS, xlab="Time, t", ylab="Estimated Survival Probability, S(t)", 
+     main="Breslow estimate of survival function\n at the averages of the covariates with 95% confidence bands")
+```
+
+```{r}
+plotH("exponential", data$lenfol_months, data$fstat)
+hplot <- hr_plot(data, dependent="Surv(lenfol_months, fstat)", explanatory=c("age", "bmi"), dependent_label = "Hazard Ratios from Cox PH Model", suffix = NULL, column_space = c(-0.5, -.7, 0.5), title_text_size = 20, table_text_size = 5, breaks = c(.85,.9,.95,1))
+
+hplot$hplot <- hplot$hplot + 
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+
+```
+
+
+
+
