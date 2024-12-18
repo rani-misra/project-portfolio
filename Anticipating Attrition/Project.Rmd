@@ -1,0 +1,263 @@
+---
+title: "Project"
+author: "Cheyenne Airington, Rani Misra"
+date: "`r Sys.Date()`"
+output: openintro::lab_report
+---
+
+```{r load-packages, message=FALSE}
+library(tidyverse)
+library(openintro)
+```
+
+```{r}
+data <- read_csv("/Users/rani/Desktop/School Portfolio/UTSA/Spring 2024/Data Mining/Project/HR_Analytics.csv")
+
+# data clean up 
+# Check the structure of the dataset
+str(data)
+head(data)
+
+# Check for nulls and redundant constant fields, constant variables mess up the selection process since it’s based on variability
+
+# Check for null values
+null_columns <- sapply(data, function(x) any(is.na(x)))
+if (any(null_columns)) {
+  print("Null values detected.")
+  print("Columns with null values:")
+  print(names(data)[null_columns])
+} else {
+  print("No null values detected.")
+}
+
+# Check for constant fields
+constant_columns <- sapply(data, function(x) length(unique(x)) == 1)
+if (any(constant_columns)) {
+  print("Constant fields detected.")
+  print("Columns with constant values:")
+  print(names(data)[constant_columns])
+} else {
+  print("No constant fields detected.")
+}
+
+# Drop constant fields and "EmployeeNumber" variable, I’m dropping EmployeeNumber since this alone can’t be a good indicator of whether an employee will term as it’s unique for every employee and only differentiates employees from one another
+
+data <- data %>%
+  select(-where(~length(unique(.)) == 1), -EmployeeNumber)
+
+#This step may not be necessary but it shouldn’t affect model performance
+# Convert character variables to factors
+data <- data %>%
+  mutate_if(is.character, as.factor)
+
+# Check the structure of the dataset
+str(data)
+```
+
+```{r}
+set.seed(1)
+test_sample <- sample(1:nrow(data), nrow(data)/4)
+train <- data[-test_sample, ]
+test <- data[test_sample, ]
+
+library(leaps)
+
+fwd <- regsubsets(Attrition ~ ., data=train, nvmax=17, method='forward')
+fwd_sum <- summary(fwd)
+
+par(mfrow=c(2,2))
+plot(fwd_sum$cp ,xlab="Number of Variables ", ylab="Cp",
+type="b")
+points(which.min(fwd_sum$cp), fwd_sum$cp[which.min(fwd_sum$cp)], col="red", 
+       cex=2, pch=20)
+
+plot(fwd_sum$bic ,xlab="Number of Variables ", 
+ylab="BIC",type="b")
+points(which.min(fwd_sum$bic), fwd_sum$bic[which.min(fwd_sum$bic)], col="red", 
+       cex=2, pch=20)
+
+plot(fwd_sum$adjr2 ,xlab="Number of Variables ", 
+ylab="Adjusted R^2^",type="b")
+points(which.max(fwd_sum$adjr2), fwd_sum$adjr2[which.max(fwd_sum$adjr2)], 
+       col="red", cex=2, pch=20)
+
+which.min(fwd_sum$cp)
+which.min(fwd_sum$bic)
+which.max(fwd_sum$adjr2)
+
+test_matrix <- model.matrix(Attrition~., data=test)
+
+val.errors <- rep(NA,17)
+for(i in 1:17){
+  coefi <- coef(fwd,id=i)
+  pred <- test_matrix[,names(coefi)]%*%coefi
+  pred_binary <- ifelse(pred >= 1.5, 2, 1)
+  val.errors[i] <- mean((as.numeric(test$Attrition) - pred_binary)^2) 
+}
+
+which.min(val.errors)
+
+plot(val.errors, type='b')
+points(which.min(val.errors), val.errors[10], col='red', pch=20, cex=2)
+
+
+```
+
+```{r}
+fwd_full <- regsubsets(Attrition ~ ., data=data, nvmax=17, method='forward')
+coef(fwd_full, 10)
+```
+
+```{r}
+# Get the indices of the selected variables
+selected_indices <- which.min(fwd_sum$bic)
+
+# Extract the names of the selected variables
+selected_variables <- names(which(fwd_sum$which[selected_indices, ] != 0, arr.ind = TRUE))
+sel_var <-selected_variables[-1]
+# Print the selected variables
+print(sel_var)
+
+# Identify the columns that need one-hot encoding
+columns_to_encode <- c("MaritalStatus", "BusinessTravel","JobRole","OverTime")
+
+# One-hot encode selected columns
+encoded_train <- model.matrix(~ . - 1, data = train[columns_to_encode])
+encoded_test<-model.matrix(~ . - 1, data = test[columns_to_encode])
+
+# Combine encoded columns with original dataset
+encoded_train <- cbind(train, encoded_train)
+encoded_test <- cbind(test, encoded_test)
+
+# Filter out columns from the final dataset
+train_fnl <- encoded_train[, c("Attrition", sel_var)]
+test_fnl <- encoded_test[, c("Attrition", sel_var)]
+```
+
+```{r}
+library(caret)
+library(pROC)
+
+#Log model
+
+# Fit logistic regression model using train_fnl
+cv <- trainControl(method='cv', number=10, savePredictions = T)
+logistic_model <- train(Attrition ~ ., data = train_fnl, method='glm', family = binomial, trControl=cv)
+logistic_model
+
+# Calculate precision, recall, and F1-score using the confusion matrix
+predicted <- logistic_model$pred$pred
+observed <- logistic_model$pred$obs
+conf_matrix <- confusionMatrix(predicted, observed)
+
+accuracy <- sum(conf_matrix$table[1,1], conf_matrix$table[2,2]) / sum(conf_matrix$table)
+precision <- conf_matrix$byClass["Pos Pred Value"]
+recall <- conf_matrix$byClass["Sensitivity"]
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Calculate AUC
+roc_curve <- roc(as.numeric(observed), as.numeric(predicted))
+auc_value <- auc(roc_curve)
+
+# Display evaluation metrics
+print(paste("Accuracy:", round(accuracy, 4)))
+print(paste("Precision:", round(precision, 4)))
+print(paste("Recall:", round(recall, 4)))
+print(paste("F1-score:", round(f1_score, 4)))
+print(paste("AUC:", round(auc_value, 4)))
+
+# Plot ROC curve
+plot(roc_curve, main = "ROC Curve", col = "blue", lwd = 2)
+text(0.95, 0, paste("AUC =", round(auc(roc_curve), 2)), adj = c(1, 0), pos = 4)
+```
+
+```{r}
+##LDA
+
+# Fit LDA model using train_fnl
+cv <- trainControl(method = 'cv', number = 10, savePredictions = TRUE)
+lda_model <- train(Attrition ~ ., data = train_fnl, method = 'lda', trControl = cv)
+lda_model
+
+# Calculate precision, recall, and F1-score using the confusion matrix
+lda_predicted <- lda_model$pred$pred
+lda_observed <- lda_model$pred$obs
+lda_conf_matrix <- confusionMatrix(lda_predicted, lda_observed)
+
+lda_accuracy <- sum(lda_conf_matrix$table[1,1], lda_conf_matrix$table[2,2]) / sum(lda_conf_matrix$table)
+lda_precision <- lda_conf_matrix$byClass["Pos Pred Value"]
+lda_recall <- lda_conf_matrix$byClass["Sensitivity"]
+lda_f1_score <- 2 * (lda_precision * lda_recall) / (lda_precision + lda_recall)
+
+# Calculate AUC
+lda_roc_curve <- roc(as.numeric(lda_observed), as.numeric(lda_predicted))
+lda_auc_value <- auc(lda_roc_curve)
+
+# Display evaluation metrics
+print(paste("Accuracy:", round(lda_accuracy, 4)))
+print(paste("Precision:", round(lda_precision, 4)))
+print(paste("Recall:", round(lda_recall, 4)))
+print(paste("F1-score:", round(lda_f1_score, 4)))
+print(paste("AUC:", round(lda_auc_value, 4)))
+
+# Plot ROC curve
+plot(lda_roc_curve, main = "ROC Curve", col = "blue", lwd = 2)
+text(0.95, 0, paste("AUC =", round(auc(lda_roc_curve), 2)), adj = c(1, 0), pos = 4)
+```
+
+```{r}
+#QDA
+# Fit QDA model using train_fnl
+cv <- trainControl(method = 'cv', number = 10, savePredictions = TRUE)
+qda_model <- train(Attrition ~ ., data = train_fnl, method = 'qda', trControl = cv)
+qda_model
+
+# Calculate precision, recall, and F1-score using the confusion matrix
+qda_predicted <- qda_model$pred$pred
+qda_observed <- qda_model$pred$obs
+qda_conf_matrix <- confusionMatrix(qda_predicted, qda_observed)
+
+qda_accuracy <- sum(qda_conf_matrix$table[1,1], qda_conf_matrix$table[2,2]) / sum(qda_conf_matrix$table)
+qda_precision <- qda_conf_matrix$byClass["Pos Pred Value"]
+qda_recall <- qda_conf_matrix$byClass["Sensitivity"]
+qda_f1_score <- 2 * (qda_precision * qda_recall) / (qda_precision + qda_recall)
+
+# Calculate AUC
+qda_roc_curve <- roc(as.numeric(qda_observed), as.numeric(qda_predicted))
+qda_auc_value <- auc(qda_roc_curve)
+
+# Display evaluation metrics
+print(paste("Accuracy:", round(qda_accuracy, 4)))
+print(paste("Precision:", round(qda_precision, 4)))
+print(paste("Recall:", round(qda_recall, 4)))
+print(paste("F1-score:", round(qda_f1_score, 4)))
+print(paste("AUC:", round(qda_auc_value, 4)))
+
+# Plot ROC curve
+plot(qda_roc_curve, main = "ROC Curve", col = "blue", lwd = 2)
+text(0.95, 0, paste("AUC =", round(auc(qda_roc_curve), 2)), adj = c(1, 0), pos = 4)
+```
+
+```{r}
+# Parse out P values
+log_p<-conf_matrix$overall["AccuracyPValue"]
+lda_p<-lda_conf_matrix$overall["AccuracyPValue"]
+qda_p<-qda_conf_matrix$overall["AccuracyPValue"]
+
+# Create vectors for accuracy, recall, and AUC values for different models
+model_accuracy <- c(accuracy, lda_accuracy, qda_accuracy)
+model_recall <- c(recall, lda_recall, qda_recall)
+model_auc_value <- c(auc_value, lda_auc_value, qda_auc_value)
+model_pvalue <- c(log_p, lda_p, qda_p)
+
+# Create a dataframe
+comparison_table <- data.frame(Model = c("LOG", "LDA", "QDA"),
+                               Accuracy = model_accuracy,
+                               Recall = model_recall,
+                               AUC_Value = model_auc_value,
+                               P_Value = model_pvalue)
+
+# Gives us a general look at some metrics we can compare, maybe something like this can be included in the slide deck
+print(comparison_table)
+```
+
