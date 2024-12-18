@@ -1,0 +1,57 @@
+PROC IMPORT OUT=tss
+    DATAFILE="/home/u63069202/Multivariate Analysis/Project/taylor_swift_spotify.csv"
+    DBMS=CSV REPLACE; GETNAMES=YES; RUN;
+data tss; set tss;
+
+drop var1 release_date track_number id uri duration_ms; 
+if album in ('Taylor Swift',  'Live From Clear Channel Stripped', 'Fearless', 'Fearless (International Vers', 'Fearless Platinum Edition', 'Speak Now (Deluxe Edition)', 'Speak Now', 'Speak Now World Tour Live', 'Red',  'Red (Deluxe Edition)', '1989', '1989 (Deluxe Edition)', 'reputation', 'reputation Stadium Tour Surprise', 'Lover', 'folklore',  'folklore: the long pond studio s',  'folklore (deluxe version)',  'evermore', 'evermore (deluxe version)',  'Midnights', 'Midnights (3am Edition)', 'Midnights (The Til Dawn Edition)', "Fearless (Taylor's Version)", "Speak Now (Taylor's Version)", "1989 (Taylor's Version)", "1989 (Taylor's Version) [Deluxe]") then delete; 
+if name in ("State Of Grace (Acoustic Version) (Taylor's Version)") then delete;
+run; proc print data=tss;
+
+proc cluster data=tss method=average noeigen nonorm out=tree1;
+id name;
+var acousticness danceability energy instrumentalness liveness loudness speechiness	
+tempo valence popularity; run;
+
+
+proc tree data=tree1  out=tss_out nclusters=3 horizontal;
+copy acousticness danceability energy instrumentalness liveness loudness speechiness tempo valence popularity; run;
+
+proc sort data = tss_out; by cluster; run;
+proc print data=tss_out; by cluster; title "5-Clusters solution: Average Linkage Clustering"; run;
+
+proc cluster data=tss  method=ward standard noprint noeigen nonorm out=tree2;
+id name;
+var acousticness danceability energy instrumentalness liveness loudness speechiness tempo valence popularity; run; 
+
+proc sort data=tree2; by _ncl_; 
+
+data graph2; set tree2; if _ncl_<=10; proc print data=graph2; var _ncl_ _ccc_ ;
+
+symbol1 i=join value=star;
+
+proc gplot data=graph2; plot _rsq_*_ncl_ ; title "R**2 vs. No. of Clusters"; run;
+proc gplot data=graph2; plot _height_*_ncl_ ; title "BSS vs. No. of Clusters";
+Proc gplot data=tree2; plot _ccc_*_ncl_/haxis=0 to 10 by 1 ; title "CCC vs. No. of Clusters"; run;
+
+
+
+
+proc tree data=tree2 out=newdata nclusters=3 horizontal;
+id name;
+copy acousticness danceability energy instrumentalness liveness loudness speechiness tempo valence popularity; title "Dendogram: Ward's Method"; run;
+
+proc means data=newdata;
+var acousticness danceability energy instrumentalness liveness loudness speechiness tempo valence popularity; by cluster; run;
+
+PROC IMPORT OUT=clustermeans
+    DATAFILE="/home/u63069202/Multivariate Analysis/Project/clustermeans.xlsx"
+    DBMS=XLSX
+    REPLACE;
+    GETNAMES=YES;
+RUN;
+
+proc print data=clustermeans;
+
+proc glm data=newdata; class cluster;
+model acousticness danceability energy instrumentalness liveness loudness speechiness tempo valence popularity =cluster/nouni; manova h=cluster; run;
