@@ -1,0 +1,21 @@
+PROC IMPORT OUT=tss
+DA TAFILE="/home/u63069202/Multivariate Analysis/Project/taylor_swift_spotify.csv"
+DBMS=CSV
+REPLACE;
+GETNAMES=YES;
+RUN;
+data tss;
+set tss;
+drop var1 release_date track_number id uri duration_ms;
+if album in ('Live From Clear Channel Stripped', 'Fearless', 'Fearless (International V ers',
+'Fearless Platinum Edition', 'Speak Now (Deluxe Edition)', 'Speak Now', 'Speak Now World Tour
+Live', 'Red', 'Red (Deluxe Edition)', '1989', '1989 (Deluxe Edition)', 'reputation Stadium Tour
+Surprise', 'folklore', 'folklore: the long pond studio s', 'evermore', 'Midnights', 'Midnights (3am
+Edition)', "1989 (Taylor's V ersion)") then delete; run;
+proc print data=tss;
+proc reg data=tss;
+MODEL popularity = acousticness danceability energy instrumentalness liveness
+loudness speechiness tempo valence /
+selection = backward cli clm clb vif influence P R noint;
+OUTPUT OUT=NEW P=PRED R=RES;
+RUN;
