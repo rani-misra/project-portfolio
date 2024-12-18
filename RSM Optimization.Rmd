@@ -1,0 +1,60 @@
+---
+title: "RSM Optimization"
+author: "Rani Misra, Bella Almeter, Jeffrey Serna"
+date: "`r Sys.Date()`"
+output: openintro::lab_report
+---
+
+```{r load-packages, message=FALSE}
+library(tidyverse)
+library(openintro)
+library(rsm)
+```
+
+```{r}
+heli.data <- read.table(header=TRUE, text="
+rep1  rep2  rep3  rep4  rep5  rep6  rep7
+1.70  2.18  1.93  1.55  1.73  2.23  1.71  
+1.75  2.35  1.65  1.77  1.64  1.75  1.76  
+1.60  1.75  1.45  1.55  1.68  1.93  1.79  
+1.68  2.06  2.00  1.99  1.91  2.02  2.04  
+1.75  1.63  1.46  1.51  1.75  1.79  1.73  
+1.36  1.60  1.53  1.78  1.68  1.75  1.61  
+1.58  2.08  1.83  2.02  1.81  2.05  1.91  
+1.73  2.12  1.73  1.98  2.05  1.82  1.76  
+")
+
+avg = rowMeans(heli.data) 
+heli.data$avg = avg
+heli.data <- as.data.frame(t(heli.data))
+
+cor(heli.data)
+
+heli <- coded.data(heli.data,
+                   formulas = c(x1 ~ V1, x2 ~ V2, x3 ~ V3, x4 ~ V4, x5 ~ V5, x6 ~ V6, x7 ~ V7))
+
+head(heli)
+```
+
+### Exercise 1
+#### Did you find a stationary point for your design? If so, was it an optimum, a ridge, or a saddle point?
+x2 (design point for wing length) and x5 (design point for body width) are chosen to find the stationary point. 
+
+As the eigenvalues have negative signs, it is an optimum maximum.  
+
+```{r}
+summary(
+  heli.rsm <- rsm(avg ~ SO(x2,x5), data = heli)
+)
+```
+
+
+### Exercise 2
+#### What are your optimum helicopter dimensions?
+The optimum helicopter dimensions are a wing length of 2.04", and a body width of 1.55". As the wing length and body height are dependent on each other, the wing length can be subtracted from the maximum length of the index card (5") to find the body height. Thus, $5"-2.04"=2.96"$, making the body height 2.96". 
+```{r}
+par(mfrow = c(2, 3))
+contour(heli.rsm, ~ x2 + x5, image = TRUE, 
+        at = summary(heli.rsm)$canonical$xs)
+```
+
