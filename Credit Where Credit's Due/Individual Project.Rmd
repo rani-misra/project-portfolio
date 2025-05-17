@@ -1,0 +1,481 @@
+---
+title: "Individual Project"
+author: "Rani Misra"
+date: "`r Sys.Date()`"
+output: openintro::lab_report
+---
+
+```{r load-packages, message=FALSE}
+library(tidyverse)
+library(openintro)
+library(corrplot)
+library(caret)
+library(broom)
+library(ggpubr)
+library(car)
+library(randomForest)
+library(knitr)
+library(kableExtra)
+library(pROC)
+```
+
+```{r}
+loan <- read.csv("loan_default.csv", colClasses = c("LoanID" = "NULL"))
+table(loan$Default)
+str(loan)
+colSums(is.na(loan))
+loan <- loan %>%
+  mutate(across(where(is.character), as.factor)) %>%
+  mutate(Default = as.factor(Default))
+```
+
+```{r}
+set.seed(1)
+loan_0 <- loan[loan$Default == "0", ]  # "0" is the majority class
+loan_1 <- loan[loan$Default == "1", ] # "1" is the minority class
+sample_0 <- loan_0[sample(nrow(loan_0), nrow(loan_1), replace = FALSE), ]
+
+#### Combine minority and majority class samples
+loan_bal <- rbind(loan_1, sample_0)
+plot(loan_bal$Default)
+```
+
+```{r}
+numeric_loan <- loan_bal[sapply(loan_bal, is.numeric)]
+cor_m <- cor(numeric_loan)
+cor_m
+#png("correlation_plot.png", width = 800, height = 800, res = 100)
+corrplot(cor_m, order = 'AOE',  col = COL2('RdBu', 10), tl.col = "black",
+         addCoef.col = "grey",  number.cex = 0.5,) 
+#dev.off()
+```
+
+# Are borrowers with dependents more likely to default? Are there any other factors that potentially skew the effect of having dependents? 
+
+```{r}
+set.seed(1)
+# Chi-square test
+table_dependents <- table(loan_bal$HasDependents, loan_bal$Default)
+chisq.test(table_dependents)
+
+model_full <- glm(Default ~ HasDependents * (.),
+                  data = loan_bal, family = binomial)
+summary(model_full)
+
+model_summary <- tidy(model_full)
+
+has_dep_terms <- model_summary %>%
+  filter(term == "HasDependentsYes" | grepl("HasDependentsYes:", term) | grepl(":HasDependentsYes", term)) %>%
+  arrange(p.value)
+
+significant_terms <- has_dep_terms %>%
+  filter(p.value < 0.15)
+
+ggplot(significant_terms, aes(x = reorder(term, -p.value), y = p.value)) +
+  geom_bar(stat = "identity", fill = "#B7CDB7") +
+  geom_hline(yintercept = 0.05, linetype = "dashed", color = "#4F674F") +
+  coord_flip() +
+  labs(title = "Significant Effects Involving HasDependentsYes",
+       x = "Variable",
+       y = "P Value") +
+  theme_minimal()
+```
+
+Chi-square says that an association exists between having dependents and defaulting. 
+
+`HasDependentYes`: significant, borrowers with dependents are less likely to default than those without. This relationship holds even after controlling for income, employment type, education, marital status, loan characteristics, etc.
+
+`HasDependentsYes:NumCreditLines`: significant, having dependents slightly increases the likelihood of default as the number of credit lines increases — possibly indicating financial strain from managing multiple accounts with dependents.
+
+Even though borrowers with dependents are generally less likely to default, if they have many credit lines, that protective effect weakens—suggesting that credit complexity may offset the benefits of having dependents (possibly due to financial strain or overextension).
+
+# Does a higher Debt-to-Income ratio increase the risk of a borrower defaulting?
+
+```{r}
+set.seed(1)
+# Shapiro-Wilk normality test
+shapiro.test(sample(loan_bal$DTIRatio[loan_bal$Default == 1], 5000))
+shapiro.test(sample(loan_bal$DTIRatio[loan_bal$Default == 0], 5000))
+
+#not normal, using wilcox instead
+wilcox.test(DTIRatio ~ Default, data = loan_bal)
+
+# Logistic regression
+model_dti <- glm(Default ~ DTIRatio, data = loan_bal, family = binomial)
+summary(model_dti)
+
+mean_values <- loan_bal %>%
+  group_by(Default) %>%
+  summarise(mean_dti = mean(DTIRatio, na.rm = TRUE))
+
+ggplot(loan_bal, aes(x = as.factor(Default), y = DTIRatio, fill = as.factor(Default))) +
+  geom_boxplot(aes(fill = as.factor(Default)), outlier.shape = NA, alpha = 0.5) +
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 3, color = "#FFFFFF") +
+  scale_fill_manual(values = c("#B7CDB7", "#4F674F")) + 
+  labs(title = "Distribution of DTIRatio by Default Status",
+       x = "Default (0 = No, 1 = Yes)",
+       y = "DTI Ratio") +
+  annotate("text", x = 1.5, y = max(loan_bal$DTIRatio, na.rm = TRUE) * 0.95,
+           label = "Wilcoxon Rank-Sum Test:\n p < 0.001",
+           hjust = 0.5, size = 4.5, color = "black") +
+  annotate("text", x = 1.5, y = 0.15,
+           label = "0.5125 - 0.4988 = 0.0137",
+           hjust = 0.5, size = 4.5, color = "black") +
+  geom_text(data = mean_values, aes(x = as.factor(Default), y = mean_dti, 
+                                    label = round(mean_dti, 4)),
+            color = "black", size = 4, vjust = -1) +  
+  theme_minimal()
+```
+
+The distribution for `DTIRatio` is not normal. Thus, a non-parametric test like Wilcoxon Rank-Sum test is used. It is significant and shows strong evidence that the median Debt-to-Income ratios differ between borrowers who defaulted and those who didn’t. While the difference might seem small (1.37%), having a large sample size of roughly 59,000 observations makes this difference impactful. 
+
+The logistic regression with `DTIRatio` as the only predictor for `Default` is also statistically significant. The coefficient is positive, indicating that as the `DTIRatio` increases, the log-odds of defaulting also increase. This supports the conclusion from the test as well. 
+
+# Are there any variations in default rates across types?
+
+```{r}
+set.seed(1)
+# Chi-square test
+table_type <- table(loan_bal$LoanPurpose, loan_bal$Default)
+chisq.test(table_type)
+
+# Logistic regression
+model_purpose <- glm(Default ~ LoanPurpose, 
+                     data = loan_bal, family = binomial)
+summary(model_purpose)
+
+coef_values <- summary(model_purpose)$coefficients[, 1]
+odds_ratios <- exp(coef_values)
+percent_change <- (odds_ratios - 1) * 100
+odds_table <- data.frame(
+  Coefficient = coef_values,
+  Odds_Ratio = odds_ratios,
+  Percent_Change = percent_change
+)
+print(odds_table)
+
+loan_prop <- loan_bal %>%
+  group_by(LoanPurpose, Default) %>%
+  summarize(count = n(), .groups = "drop") %>%
+  group_by(LoanPurpose) %>%
+  mutate(prop = count / sum(count))
+
+ggplot(loan_prop, aes(x = LoanPurpose, y = prop, fill = Default)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("0" = "#B7CDB7", "1" = "#4F674F"),
+                    labels = c("Not Default", "Default")) + 
+  labs(title = "Default Rates by Loan Purpose", 
+       x = "Loan Purpose", 
+       y = "Proportion of Borrowers",
+       fill = "Default") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The chi-square test supports the hypothesis that some loan purposes have higher/lower default rates. 
+
+The logistic regression shows that business loans (`LoanPurposeBusiness`) are significant and have a slightly higher default risk compared to the baseline (`LoanPurposeAuto`). Home loans (`LoanPurposeHome`) are also significant but have a lower likelihood of defaulting as the coefficient is negative. When looking at the odds ratios for these predictors, business loans have almost a 6% higher odds of defaulting compared to auto loans. As suspected, home loans have almost a 15% lower odds of defaulting when compared to auto loans. 
+
+The plot shows the proportion of borrowers that default based on the total amount of borrowers in that loan type. The largest differences can be seen within business, where defaulters are higher than non-defaulters, and home, where non-defaulters are much higher than defaulters. 
+
+# Does having a co-signer reduce default risk? 
+
+```{r}
+set.seed(1)
+# Chi-square test
+table_cosigner <- table(loan_bal$HasCoSigner, loan_bal$Default)
+chisq.test(table_cosigner)
+
+# Logistic regression
+model_cosigner <- glm(Default ~ HasCoSigner, 
+                      data = loan_bal, family = binomial)
+summary(model_cosigner)
+(exp(coef(model_cosigner)["HasCoSignerYes"]) - 1) * 100
+
+co_signer_prop <- loan_bal %>%
+  group_by(HasCoSigner, Default) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(HasCoSigner) %>%
+  mutate(prop = n / sum(n))
+
+ggplot(co_signer_prop, aes(x = HasCoSigner, y = prop, fill = factor(Default))) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_fill_manual(values = c("0" = "#B7CDB7", "1" = "#4F674F"), 
+                    labels = c("Not Default", "Default")) +
+  labs(title = "Default Rate by Co-Signer Status",
+       x = "Has Co-Signer",
+       y = "Proportion",
+       fill = "Default") +
+  theme_minimal()
+```
+
+The chi-square test shows that there is a significant association between having a co-signer and defaulting.
+
+The logistic regression shows that `HasCoSignerYes` is statistically significant and the log odds indicates that having a co-signer reduces the odds of default by about 21.95% compared to not having a co-signer.
+
+# Are Credit Scores an accurate measure of a borrower’s capability of not defaulting?
+
+```{r}
+set.seed(1)
+# Shapiro-Wilk normality test
+shapiro.test(sample(loan_bal$CreditScore[loan_bal$Default == 1], 5000))
+shapiro.test(sample(loan_bal$CreditScore[loan_bal$Default == 0], 5000))
+
+# t-test for credit score
+wilcox.test(CreditScore ~ Default, data = loan_bal)
+
+ggplot(loan_bal, aes(x = as.factor(Default), y = CreditScore, fill = as.factor(Default))) +
+  geom_boxplot(aes(fill = as.factor(Default)), outlier.shape = NA, alpha = 0.5) +
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 3, color = "#FFFFFF") +
+  scale_fill_manual(values = c("#B7CDB7", "#4F674F")) + 
+  labs(title = "Distribution of CreditScore by Default Status",
+       x = "Default (0 = No, 1 = Yes)",
+       y = "Credit Score") +
+  annotate("text", x = 1.5, y = max(loan_bal$CreditScore, na.rm = TRUE) * 0.95,
+           label = "Wilcoxon Rank-Sum Test:\n p < 0.001",
+           hjust = 0.5, size = 4.5, color = "black") +
+  theme_minimal()
+
+# Logistic regression
+model_credit <- glm(Default ~ CreditScore, data = loan_bal, family = binomial)
+summary(model_credit)
+(exp(coef(model_credit)["CreditScore"]) - 1) * 100
+
+model_interaction <- glm(Default ~ CreditScore * Income + CreditScore * EmploymentType, 
+                         data = loan_bal, family = binomial)
+summary(model_interaction)
+
+model_summary <- tidy(model_interaction)
+
+has_dep_terms <- model_summary %>%
+  filter(term == "CreditScore" | grepl("CreditScore:", term) | grepl(":CreditScore", term)) %>%
+  arrange(p.value)
+
+significant_terms <- has_dep_terms %>%
+  filter(p.value < 0.99)
+
+ggplot(significant_terms, aes(x = reorder(term, -p.value), y = p.value)) +
+  geom_bar(stat = "identity", fill = "#B7CDB7") +
+  geom_hline(yintercept = 0.05, linetype = "dashed", color = "#4F674F") +
+  coord_flip() +
+  labs(title = "Significant Effects Involving CreditScore",
+       x = "Variable",
+       y = "P Value") +
+  theme_minimal()
+
+```
+
+The distribution for `CreditScore` is not normal. Thus, a non-parametric test like Wilcoxon Rank-Sum test is used and is significant. This shows that there is a statistically significant difference in `CreditScore` distributions between defaulters and non-defaulters.
+
+The logistic regression shows that `CreditScore` is statistically significant and the log odds indicates that every 1-point increase in `CreditScore` lowers odds of default by about 0.066%.
+
+As the interactions of `CreditScore` with `Income` or `EmploymentType` are not significant, the hypothesis that the relationship between `CreditScore` and `Default` could be influenced by a borrower’s financial stability (through `Income`) or employment status isn’t strongly supported by the data in this model.
+
+# Compare Models: Logistic vs KNN vs Random Forest
+
+```{r}
+# Prepare train/test split
+set.seed(1)
+train_index <- createDataPartition(loan_bal$Default, p = 0.7, list = FALSE)
+train <- loan_bal[train_index, ]
+test <- loan_bal[-train_index, ]
+
+preproc <- preProcess(train, method = c("center", "scale"))
+train_scaled <- predict(preproc, train)
+test_scaled <- predict(preproc, test)
+
+train_scaled$Default <- factor(train_scaled$Default, levels = c("0", "1"), 
+                               labels = c("No", "Yes"))
+test_scaled$Default <- factor(test_scaled$Default, levels = c("0", "1"), 
+                              labels = c("No", "Yes"))
+```
+
+```{r}
+# Logistic regression
+set.seed(1)
+ctrl <- trainControl(method = "cv", number = 5, classProbs = TRUE, 
+                     summaryFunction = twoClassSummary)
+
+log_model <- train(Default ~ ., data = train_scaled,
+                method = "glm", family = "binomial",
+                metric = "ROC", trControl = ctrl)
+
+log_probs <- predict(log_model, test_scaled, type = "prob")[, "Yes"]
+log_pred <- factor(ifelse(log_probs > 0.5, "Yes", "No"), levels = c("No", "Yes"))
+actual <- test_scaled$Default
+
+confusionMatrix(log_pred, actual)
+```
+
+```{r}
+# KNN
+set.seed(1)
+tune_grid <- expand.grid(k = seq(3, 51, 2))
+knn_model <- train(Default ~ ., 
+                   data = train_scaled, 
+                   method = "knn", 
+                   tuneGrid = tune_grid,
+                   trControl = ctrl,
+                   preProcess = c("center", "scale"),
+                   metric = "ROC")
+
+knn_model$bestTune
+
+results_knn <- knn_model$results
+ggplot(results_knn, aes(x = k, y = ROC)) +
+  geom_line(color = "#4F674F", linewidth = 1) +
+  geom_point(color = "#4F674F", size = 2) +
+  labs(title = "KNN Cross-Validation ROC by k",
+       x = "Number of Neighbors (k)",
+       y = "ROC") +
+  theme_minimal()
+
+knn_pred <- predict(knn_model, newdata = test_scaled)
+confusionMatrix(knn_pred, actual)
+```
+
+```{r}
+# Random Forest
+set.seed(1)
+rf_grid <- expand.grid(mtry = c(2, 4, 6, 8, 10))
+
+rf_model <- train(Default ~ ., data = train_scaled, method = "rf",
+                        tuneGrid = rf_grid,
+                        trControl = ctrl,
+                        ntree = 100,
+                        importance = TRUE)
+rf_model$bestTune
+results_rf <- rf_model$results
+ggplot(results_rf, aes(x = mtry, y = ROC)) +
+  geom_line(color = "#4F674F", size = 1) +
+  geom_point(color = "#4F674F", size = 2) +
+  theme_minimal() +
+  labs(title = "Random Forest Model Performance", 
+       x = "mtry", 
+       y = "ROC AUC")
+
+
+rf_pred <- predict(rf_model, test_scaled)
+confusionMatrix(rf_pred, test_scaled$Default)
+```
+
+```{r}
+varImp_rf <- varImp(rf_model)
+var_imp_data <- as.data.frame(varImp_rf$importance)
+var_imp_data$Variable <- rownames(var_imp_data)
+var_imp_data$Yes <- as.numeric(var_imp_data$Yes)
+top_vars <- var_imp_data[order(var_imp_data$Yes, decreasing = TRUE), ]
+top_vars <- head(top_vars, 15)
+
+ggplot(top_vars, aes(x = reorder(Variable, Yes), y = Yes)) +
+  geom_point(color = "#4F674F", size = 3) + 
+  geom_segment(aes(xend = reorder(Variable, Yes), yend = 0), color = "#4F674F") +
+  coord_flip() + 
+  theme_minimal() +
+  labs(title = "Top 15 Important Variables", 
+       x = "Variables", 
+       y = "Importance") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+top_vars_name <- c("Age", "InterestRate", "Income", "LoanAmount", "MonthsEmployed")
+reduced_formula <- as.formula(paste("Default ~", paste(top_vars_name, collapse = " + ")))
+rf_grid_reduced <- expand.grid(mtry = 1:length(top_vars))
+
+set.seed(1)
+rf_reduced <- train(reduced_formula, 
+                    data = train_scaled, 
+                    method = "rf",
+                    tuneGrid = rf_grid_reduced,
+                    trControl = ctrl,
+                    ntree = 100,
+                    importance = TRUE,
+                    metric = "ROC")
+
+rf_reduced_pred <- predict(rf_reduced, test_scaled)
+confusionMatrix(rf_reduced_pred, test_scaled$Default)
+```
+
+
+```{r}
+confusion_log <- confusionMatrix(log_pred, actual)
+confusion_knn <- confusionMatrix(knn_pred, actual)
+confusion_rf  <- confusionMatrix(rf_pred, actual)
+confusion_rf_reduced  <- confusionMatrix(rf_reduced_pred, actual)
+
+roc_log <- roc(actual, log_probs)
+roc_knn <- roc(actual, predict(knn_model, newdata = test_scaled, type = "prob")[, "Yes"])
+roc_rf <- roc(actual, predict(rf_model, test_scaled, type = "prob")[, "Yes"]) 
+roc_rf_reduced <- roc(actual, predict(rf_reduced, test_scaled, type = "prob")[, "Yes"]) 
+
+# Extract AUC values
+auc_log <- auc(roc_log)
+auc_knn <- auc(roc_knn)
+auc_rf <- auc(roc_rf)
+auc_rf_reduced <- auc(roc_rf_reduced)
+
+model_results <- data.frame(
+  Model = c("Logistic Regression", "KNN", "Random Forest", "Reduced Random Forest"),
+  Accuracy = c(confusion_log$overall["Accuracy"],
+               confusion_knn$overall["Accuracy"],
+               confusion_rf$overall["Accuracy"],
+               confusion_rf_reduced$overall["Accuracy"]),
+  Sensitivity = c(confusion_log$byClass["Sensitivity"],
+                  confusion_knn$byClass["Sensitivity"],
+                  confusion_rf$byClass["Sensitivity"],
+                  confusion_rf_reduced$byClass["Sensitivity"]),
+  Specificity = c(confusion_log$byClass["Specificity"],
+                  confusion_knn$byClass["Specificity"],
+                  confusion_rf$byClass["Specificity"],
+                  confusion_rf_reduced$byClass["Specificity"]),
+  AUC = c(auc_log, auc_knn, auc_rf, auc_rf_reduced)
+)
+
+print(model_results)
+```
+
+```{r}
+model_results_long <- reshape2::melt(model_results, id.vars = "Model")
+
+ggplot(model_results_long, aes(x = Model, y = value, fill = variable)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7), color = "white",
+           width = 0.7, linewidth = 0.5) +
+  geom_text(aes(label = round(value, 2)), position = position_dodge(width = 0.7), 
+            vjust = -0.5, size = 2.5) +
+  labs(title = "Model Comparison: Accuracy, Sensitivity, Specificity, AUC", 
+       x = "Model", 
+       y = "Value") +
+  scale_fill_manual(values = c("Accuracy" = "#B7CDB7", 
+                               "Sensitivity" = "#677D66", 
+                               "Specificity" = "#4F674F",
+                               "AUC" = "#142415")) +
+  theme_minimal()
+
+```
+
+```{r}
+#log model is best -> further interpretation
+
+summary(log_model)
+vif(log_model$finalModel)
+tidy_log <- tidy(log_model$finalModel, exponentiate = TRUE, conf.int = TRUE)
+significant_log <- subset(tidy_log, p.value < 0.05 & term != "(Intercept)")
+print(significant_log)
+
+significant_log$label <- paste0(round(significant_log$estimate, 2))
+
+ggplot(significant_log, aes(x = reorder(term, p.value), y = estimate)) +
+  geom_point(color = "#4F674F", size = 3) +
+  geom_text(aes(label = label), 
+            hjust = -0.3, 
+            size = 3, 
+            vjust = 0.5,
+            position = position_dodge(width = 0.7)) + 
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Significant Predictors: Odds Ratios",
+       x = "Predictor",
+       y = "Odds Ratio") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
