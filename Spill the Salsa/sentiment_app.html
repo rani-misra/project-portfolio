@@ -1,0 +1,400 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Spill the Salsa: BERT Sentiment Analysis on Yelp reviews for Mexican restaurants in Philadelphia</title>
+  <link href="https://fonts.googleapis.com/css2?family=Amatic+SC:wght@700&family=Quicksand:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Quicksand', sans-serif;
+      margin: 0;
+      padding: 40px 20px;
+      background: linear-gradient(135deg, #fffbea, #ffe8d6), url('https://www.transparenttextures.com/patterns/purty-wood.png');
+      background-size: cover;
+      color: #3e2723;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 2.8rem;
+      font-family: 'Amatic SC', cursive;
+      color: #d32f2f;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      text-align: center;
+      font-size: 1.2rem;
+      color: #6d4c41;
+      font-weight: 600;
+    }
+
+    label {
+      font-weight: 600;
+      color: #6d4c41;
+    }
+
+    select, input[type="search"], button {
+      padding: 12px;
+      font-size: 16px;
+      margin-top: 10px;
+      border: 2px solid #ffa726;
+      border-radius: 10px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+      background-color: #fff8e1;
+      color: #5d4037;
+    }
+
+    select:focus, input[type="search"]:focus, button:hover {
+      outline: none;
+      border-color: #ef5350;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: auto;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .left-column {
+      width: 65%;
+    }
+
+    .right-column {
+      width: 30%;
+    }
+
+    .card {
+      background-color: #fff3e0;
+      border-radius: 14px;
+      padding: 20px;
+      margin-top: 25px;
+      box-shadow: 0 6px 10px rgba(0,0,0,0.08);
+      border: 2px solid #ff7043;
+    }
+
+    .card strong {
+      font-weight: 700;
+      color: #bf360c;
+    }
+
+    table {
+      width: 100%;
+      margin-top: 15px;
+      border-collapse: collapse;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #ffe0b2;
+    }
+
+    th {
+      background-color: #fbc02d;
+      color: #4e342e;
+      font-weight: 600;
+    }
+
+    tr:hover {
+      background-color: #fff8e1;
+    }
+
+    .pagination {
+      margin-top: 15px;
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    .pagination button {
+      padding: 8px 14px;
+      font-size: 14px;
+      border: none;
+      border-radius: 8px;
+      background-color: #d84315;
+      color: white;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .pagination button:hover {
+      background-color: #bf360c;
+    }
+
+    .pagination button:disabled {
+      background-color: #ef9a9a;
+      cursor: not-allowed;
+    }
+
+    .center {
+      text-align: center;
+      font-size: 1.1rem;
+      font-weight: 500;
+      margin-top: 10px;
+    }
+
+    #pieChart {
+      width: 250px;
+      height: 250px;
+      margin-top: 15px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    @media (max-width: 600px) {
+      table, th, td {
+        font-size: 14px;
+      }
+
+      h1 {
+        font-size: 2rem;
+      }
+
+      .container {
+        flex-direction: column;
+      }
+
+      .right-column {
+        width: 100%;
+        margin-top: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="left-column">
+      <h1>Spill the Salsa: BERT Sentiment Analysis on Yelp reviews for Mexican restaurants in Philadelphia</h1>
+      <h2>By Rani Misra, Kashfia Sharmin, Cheryl Chiu, and Abby Davis</h2>
+
+      <div class="form-group">
+        <label for="restaurantDropdown">Select a restaurant:</label>
+        <select id="restaurantDropdown">
+          <option value="">Loading...</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="sentimentDropdown">Filter by sentiment:</label>
+        <select id="sentimentDropdown">
+          <option value="">All Sentiments</option>
+          <option value="Negative">Negative</option>
+          <option value="Neutral">Neutral</option>
+          <option value="Positive">Positive</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="searchBox">Search reviews:</label>
+        <input type="search" id="searchBox" placeholder="Search for keywords..." />
+      </div>
+
+      <div id="statusMessage" class="center"></div>
+
+      <div id="generalSentiment" class="card center"></div>
+
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>Review</th>
+              <th>Predicted Sentiment</th>
+            </tr>
+          </thead>
+          <tbody id="sentimentText"></tbody>
+        </table>
+        <div class="pagination">
+          <button id="prevBtn">Previous</button>
+          <span id="pageIndicator"></span>
+          <button id="nextBtn">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="right-column">
+      <div class="card">
+        <h3 class="center">Sentiment Breakdown</h3>
+        <canvas id="pieChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+  const dropdown = document.getElementById("restaurantDropdown");
+  const sentimentDropdown = document.getElementById("sentimentDropdown");
+  const searchBox = document.getElementById("searchBox");
+  const generalSentiment = document.getElementById("generalSentiment");
+  const sentimentText = document.getElementById("sentimentText");
+  const statusMessage = document.getElementById("statusMessage");
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+  const pageIndicator = document.getElementById("pageIndicator");
+
+  let allData = [];
+  let currentPage = 1;
+  const itemsPerPage = 5;
+  let currentRestaurantData = [];
+
+  const sentimentMap = {
+    "Negative": 0,
+    "Neutral": 1,
+    "Positive": 2
+  };
+
+  const sentimentIcons = {
+    "Negative": "🌶️😠",
+    "Neutral": "🌮😐",
+    "Positive": "🎉😊"
+  };
+
+  const ctx = document.getElementById("pieChart").getContext("2d");
+  let pieChart;
+
+  statusMessage.innerText = "Loading data...";
+  fetch('https://raw.githubusercontent.com/rani-misra/Deep-Learning/main/test_data.json')
+    .then(res => res.json())
+    .then(data => {
+      allData = data;
+      const names = [...new Set(data.map(item => item.name))].sort();
+      dropdown.innerHTML = "<option value=''>Select a restaurant</option>";
+      names.forEach(name => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        dropdown.appendChild(option);
+      });
+      statusMessage.innerText = "";
+    })
+    .catch(err => {
+      console.error(err);
+      statusMessage.innerText = "❌ Failed to load data.";
+    });
+
+  dropdown.addEventListener("change", () => {
+    const selected = dropdown.value;
+    if (selected) {
+      currentRestaurantData = allData.filter(item => item.name === selected);
+      currentPage = 1;
+
+      const counts = { "Negative": 0, "Neutral": 0, "Positive": 0 };
+      currentRestaurantData.forEach(item => {
+        if (item.predicted_text in counts) {
+          counts[item.predicted_text]++;
+        }
+      });
+
+      const general = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+      generalSentiment.innerHTML = `General Sentiment: <strong>${sentimentIcons[general]} ${general}</strong>`;
+
+      renderPage();
+      updatePieChart(counts);
+    } else {
+      generalSentiment.innerHTML = "";
+      sentimentText.innerHTML = "";
+      pageIndicator.innerText = "";
+    }
+  });
+
+  sentimentDropdown.addEventListener("change", () => {
+    renderPage();
+  });
+
+  searchBox.addEventListener("input", () => {
+    renderPage();
+  });
+
+  function renderPage() {
+    const selectedSentiment = sentimentDropdown.value;
+    const searchQuery = searchBox.value.toLowerCase();
+
+    const filteredData = currentRestaurantData.filter(item => {
+      const matchesSentiment = selectedSentiment ? item.predicted_text === selectedSentiment : true;
+      const matchesSearch = searchQuery ? item.text.toLowerCase().includes(searchQuery) : true;
+      return matchesSentiment && matchesSearch;
+    });
+
+    const start = (currentPage - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    const pageData = filteredData.slice(start, end);
+
+    sentimentText.innerHTML = pageData.map(item => `
+      <tr>
+        <td>${item.text}</td>
+        <td>${item.predicted_text}</td>
+      </tr>
+    `).join('');
+
+    const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+    pageIndicator.innerText = `Page ${currentPage} of ${totalPages}`;
+
+    prevBtn.disabled = currentPage === 1;
+    nextBtn.disabled = currentPage === totalPages;
+  }
+
+  function updatePieChart(counts) {
+    const totalReviews = counts["Negative"] + counts["Neutral"] + counts["Positive"];
+    const chartData = {
+      labels: ["Negative", "Neutral", "Positive"],
+      datasets: [{
+        data: [counts["Negative"], counts["Neutral"], counts["Positive"]],
+        backgroundColor: ['#d32f2f', '#fbc02d', '#388e3c'],
+        borderColor: ['#bf360c', '#f57c00', '#1b5e20'],
+        borderWidth: 1
+      }]
+    };
+
+    if (pieChart) {
+      pieChart.destroy();
+    }
+
+    pieChart = new Chart(ctx, {
+      type: 'pie',
+      data: chartData,
+      options: {
+        responsive: true,
+        plugins: {
+          legend: {
+            position: 'top',
+          },
+          tooltip: {
+            callbacks: {
+              label: function(tooltipItem) {
+                const percentage = ((tooltipItem.raw / totalReviews) * 100).toFixed(1);
+                return `${tooltipItem.label}: ${percentage}%`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  prevBtn.addEventListener("click", () => {
+    if (currentPage > 1) {
+      currentPage--;
+      renderPage();
+    }
+  });
+
+  nextBtn.addEventListener("click", () => {
+    const totalPages = Math.ceil(currentRestaurantData.length / itemsPerPage);
+    if (currentPage < totalPages) {
+      currentPage++;
+      renderPage();
+    }
+  });
+  </script>
+
+</body>
+</html>
+
